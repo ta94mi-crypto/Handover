@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 const multer = require('multer');
+const ExcelJS = require('exceljs');
 const { nanoid } = require('nanoid');
 const db = require('./db');
 
@@ -357,17 +358,11 @@ app.delete('/api/items/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- CSV export ----------
-function csvEscape(val) {
-  const s = val === null || val === undefined ? '' : String(val);
-  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
-}
-
-app.get('/api/export.csv', (req, res) => {
+// ---------- exports (CSV / Excel) ----------
+function filteredItemRows(query) {
   const clauses = [];
   const params = [];
-  const { building_id, floor_id, room_id, profession_id, contractor_type_id, status, q } = req.query;
+  const { building_id, floor_id, room_id, profession_id, contractor_type_id, status, q } = query;
   if (building_id) { clauses.push('buildings.id = ?'); params.push(building_id); }
   if (floor_id) { clauses.push('floors.id = ?'); params.push(floor_id); }
   if (room_id) { clauses.push('rooms.id = ?'); params.push(room_id); }
@@ -380,6 +375,26 @@ app.get('/api/export.csv', (req, res) => {
   }
   const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : '';
   const rows = db.prepare(`${itemsListSql} ${where} ORDER BY floors.sort_order, rooms.name`).all(...params);
+  const ids = rows.map((r) => r.id);
+  let photosByItem = {};
+  if (ids.length) {
+    const placeholders = ids.map(() => '?').join(',');
+    const photos = db.prepare(`SELECT * FROM item_photos WHERE item_id IN (${placeholders}) ORDER BY created_at ASC`).all(...ids);
+    for (const p of photos) {
+      (photosByItem[p.item_id] = photosByItem[p.item_id] || []).push(p);
+    }
+  }
+  return rows.map((r) => ({ ...r, photos: photosByItem[r.id] || [] }));
+}
+
+function csvEscape(val) {
+  const s = val === null || val === undefined ? '' : String(val);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+app.get('/api/export.csv', (req, res) => {
+  const rows = filteredItemRows(req.query);
   const header = ['בניין', 'קומה', 'חדר', 'מקצוע', 'קבלן', 'הערה', 'סטטוס', 'נוצר בתאריך'];
   const lines = [header.map(csvEscape).join(',')];
   for (const r of rows) {
@@ -402,6 +417,65 @@ app.get('/api/export.csv', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="mesira.csv"');
   res.send(csv);
+});
+
+app.get('/api/export.xlsx', async (req, res) => {
+  const rows = filteredItemRows(req.query);
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('מסירה', { views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }] });
+
+  sheet.columns = [
+    { header: 'סטטוס', key: 'status', width: 10 },
+    { header: 'בניין', key: 'building', width: 16 },
+    { header: 'קומה', key: 'floor', width: 12 },
+    { header: 'חדר', key: 'room', width: 16 },
+    { header: 'מקצוע', key: 'profession', width: 16 },
+    { header: 'קבלן', key: 'contractor', width: 16 },
+    { header: 'הערה', key: 'note', width: 40 },
+    { header: 'תמונה', key: 'photo', width: 14 },
+    { header: 'נוצר בתאריך', key: 'created', width: 18 },
+  ];
+  sheet.getRow(1).font = { bold: true };
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E5EA' } };
+  sheet.autoFilter = { from: 'A1', to: 'I1' };
+
+  for (const r of rows) {
+    const row = sheet.addRow({
+      status: r.status === 'done' ? 'טופל' : 'פתוח',
+      building: r.building_name,
+      floor: r.floor_name,
+      room: r.room_name,
+      profession: r.profession_name || '',
+      contractor: r.contractor_type_name || '',
+      note: r.note || '',
+      photo: '',
+      created: r.created_at,
+    });
+    row.getCell('note').alignment = { wrapText: true, vertical: 'top' };
+    const statusCell = row.getCell('status');
+    statusCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: r.status === 'done' ? 'FFDCFCE7' : 'FFFEE2E2' },
+    };
+    if (r.photos.length) {
+      const url = baseUrl + r.photos[0].path;
+      row.getCell('photo').value = {
+        text: r.photos.length > 1 ? `תמונה (1/${r.photos.length})` : 'תמונה',
+        hyperlink: url,
+      };
+      row.getCell('photo').font = { color: { argb: 'FF2563EB' }, underline: true };
+    }
+  }
+
+  const filenameAscii = 'mesira.xlsx';
+  const filenameUtf8 = encodeURIComponent('מסירה.xlsx');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filenameAscii}"; filename*=UTF-8''${filenameUtf8}`);
+  await workbook.xlsx.write(res);
+  res.end();
 });
 
 app.use((err, req, res, next) => {

@@ -592,7 +592,8 @@ async function viewTable() {
     <div class="card">
       <div class="filters-bar" id="filtersBar"></div>
       <div class="row" style="margin-bottom:12px;">
-        <a class="btn" id="exportCsv" href="#">⬇ ייצוא CSV</a>
+        <a class="btn btn-primary" id="exportXlsx" href="#">⬇ ייצוא לאקסל</a>
+        <a class="btn" id="exportCsv" href="#">⬇ CSV</a>
         <button class="btn" id="printBtn">🖨 הדפסה</button>
         <span class="muted" id="resultsCount"></span>
       </div>
@@ -670,6 +671,7 @@ async function viewTable() {
   async function loadTable() {
     const qs = buildQuery();
     document.getElementById('exportCsv').href = `/api/export.csv${qs ? '?' + qs : ''}`;
+    document.getElementById('exportXlsx').href = `/api/export.xlsx${qs ? '?' + qs : ''}`;
     const items = await get(`/api/items${qs ? '?' + qs : ''}`);
     document.getElementById('resultsCount').textContent = `${items.length} רשומות`;
     const body = document.getElementById('itemsBody');
