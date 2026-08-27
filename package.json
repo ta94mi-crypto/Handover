@@ -1,0 +1,19 @@
+{
+  "name": "handover",
+  "version": "1.0.0",
+  "description": "ניהול מסירות אתר בנייה - תוכניות קומה, ליקויים לפי חדר ומקצוע, מעקב סטטוס ותמונות",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.0.0",
+    "nanoid": "^3.3.7"
+  }
+}
