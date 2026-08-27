@@ -8,7 +8,8 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const STORAGE_DIR = process.env.STORAGE_DIR || __dirname;
+const UPLOADS_DIR = path.join(STORAGE_DIR, 'uploads');
 const PLANS_DIR = path.join(UPLOADS_DIR, 'plans');
 const ITEMS_DIR = path.join(UPLOADS_DIR, 'items');
 for (const dir of [UPLOADS_DIR, PLANS_DIR, ITEMS_DIR]) {
