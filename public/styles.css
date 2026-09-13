@@ -122,16 +122,21 @@ textarea { resize: vertical; min-height: 60px; width: 100%; }
 .breadcrumbs { font-size: .85rem; color: var(--text-muted); margin-bottom: 10px; }
 .breadcrumbs a:hover { text-decoration: underline; }
 
-.floor-plan-wrap {
-  position: relative;
+.plan-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.plan-viewport {
+  max-height: 70vh;
+  overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  background: #f6f7f9;
+  direction: ltr;
+}
+.floor-plan-wrap {
+  position: relative;
   background: repeating-conic-gradient(#f0f1f4 0% 25%, #fff 0% 50%) 50% / 20px 20px;
-  max-width: 100%;
   cursor: crosshair;
 }
-.floor-plan-wrap img { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; }
+.floor-plan-wrap img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
 .no-plan {
   padding: 60px 20px;
   text-align: center;

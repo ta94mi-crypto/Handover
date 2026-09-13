@@ -313,13 +313,59 @@ function renderPlan(floor, rooms, counts, floorId) {
     wrap.innerHTML = `<div class="no-plan">אין עדיין תוכנית לקומה זו. לחצו על "העלה תוכנית קומה" למעלה.</div>`;
     return;
   }
-  wrap.innerHTML = `<div class="floor-plan-wrap" id="planImgWrap">
-    <img src="${esc(floor.plan_image_path)}" id="planImg" />
-    ${rooms.filter((r) => r.x !== null && r.y !== null).map((r) => `
-      <div class="room-pin ${pinClass(counts[r.id])}" style="left:${r.x}%;top:${r.y}%;" data-room="${r.id}" title="${esc(r.name)}">${esc(r.name).slice(0, 1)}</div>
-    `).join('')}
-  </div>`;
+  wrap.innerHTML = `
+    <div class="plan-toolbar">
+      <button class="btn btn-sm" id="zoomOutBtn" title="הקטן">−</button>
+      <span class="muted" id="zoomLabel">100%</span>
+      <button class="btn btn-sm" id="zoomInBtn" title="הגדל">+</button>
+      <button class="btn btn-sm" id="zoomFitBtn">↔ התאמה לרוחב</button>
+      <span class="muted" style="font-size:.78rem;">גוללים כדי לנוע בתוכנית כשמוגדל</span>
+    </div>
+    <div class="plan-viewport" id="planViewport">
+      <div class="floor-plan-wrap" id="planImgWrap">
+        <img src="${esc(floor.plan_image_path)}" id="planImg" />
+        ${rooms.filter((r) => r.x !== null && r.y !== null).map((r) => `
+          <div class="room-pin ${pinClass(counts[r.id])}" style="left:${r.x}%;top:${r.y}%;" data-room="${r.id}" title="${esc(r.name)}">${esc(r.name).slice(0, 1)}</div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  const planViewport = document.getElementById('planViewport');
   const planImgWrap = document.getElementById('planImgWrap');
+  const planImg = document.getElementById('planImg');
+  const zoomLabel = document.getElementById('zoomLabel');
+
+  let scale = 1;
+  let naturalW = 0;
+  let naturalH = 0;
+
+  function applyScale() {
+    if (!naturalW) return;
+    planImgWrap.style.width = Math.round(naturalW * scale) + 'px';
+    planImgWrap.style.height = Math.round(naturalH * scale) + 'px';
+    zoomLabel.textContent = Math.round(scale * 100) + '%';
+  }
+  function fitToWidth() {
+    if (!naturalW) return;
+    scale = Math.min(planViewport.clientWidth / naturalW, 1) || 1;
+    applyScale();
+  }
+  function zoomBy(factor) {
+    scale = Math.min(4, Math.max(0.15, scale * factor));
+    applyScale();
+  }
+  function onImgReady() {
+    naturalW = planImg.naturalWidth;
+    naturalH = planImg.naturalHeight;
+    fitToWidth();
+  }
+  if (planImg.complete && planImg.naturalWidth) onImgReady();
+  else planImg.addEventListener('load', onImgReady);
+
+  document.getElementById('zoomInBtn').onclick = () => zoomBy(1.35);
+  document.getElementById('zoomOutBtn').onclick = () => zoomBy(1 / 1.35);
+  document.getElementById('zoomFitBtn').onclick = fitToWidth;
+
   planImgWrap.addEventListener('click', (e) => {
     if (e.target.closest('.room-pin')) return;
     const rect = planImgWrap.getBoundingClientRect();
@@ -328,7 +374,10 @@ function renderPlan(floor, rooms, counts, floorId) {
     openRoomCreateModal(floorId, x, y, () => viewFloor(floorId));
   });
   planImgWrap.querySelectorAll('.room-pin').forEach((pin) => {
-    pin.addEventListener('click', () => openRoomModal(pin.dataset.room, () => viewFloor(floorId)));
+    pin.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openRoomModal(pin.dataset.room, () => viewFloor(floorId));
+    });
   });
 }
 
