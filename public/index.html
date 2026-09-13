@@ -26,6 +26,26 @@
 
   <div id="toast" class="toast hidden"></div>
 
+  <script type="module">
+    import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+
+    window.pdfFirstPageToPngBlob = async function pdfFirstPageToPngBlob(file, maxDim = 2200) {
+      const buffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+      const page = await pdf.getPage(1);
+      const base = page.getViewport({ scale: 1 });
+      const scale = Math.min(maxDim / base.width, maxDim / base.height, 3);
+      const viewport = page.getViewport({ scale: Math.max(scale, 0.1) });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      return await new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('כשל בהמרת ה-PDF לתמונה'))), 'image/png');
+      });
+    };
+  </script>
   <script src="/app.js"></script>
 </body>
 </html>

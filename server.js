@@ -19,6 +19,7 @@ for (const dir of [UPLOADS_DIR, PLANS_DIR, ITEMS_DIR]) {
 
 app.use(express.json());
 app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/vendor/pdfjs', express.static(path.join(__dirname, 'node_modules/pdfjs-dist/build')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 function makeUploader(subdir) {

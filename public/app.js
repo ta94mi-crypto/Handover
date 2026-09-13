@@ -255,7 +255,7 @@ async function viewFloor(floorId) {
       <div class="row">
         <label class="btn btn-sm">
           📷 ${floor.plan_image_path ? 'החלף תוכנית' : 'העלה תוכנית קומה'}
-          <input type="file" accept="image/*" id="planInput" style="display:none;" />
+          <input type="file" accept="image/*,.pdf,application/pdf" id="planInput" style="display:none;" />
         </label>
         <button class="btn btn-primary btn-sm" id="addRoomBtn">+ הוסף חדר</button>
       </div>
@@ -272,8 +272,23 @@ async function viewFloor(floorId) {
   document.getElementById('planInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    let uploadFile = file;
+    let uploadName = file.name;
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (isPdf) {
+      toast('ממיר את קובץ ה-PDF לתמונה...');
+      try {
+        uploadFile = await window.pdfFirstPageToPngBlob(file);
+        uploadName = 'plan.png';
+      } catch (err) {
+        console.error(err);
+        toast('לא הצלחתי להמיר את קובץ ה-PDF. נסי לשמור אותו כתמונה (JPG/PNG) ולהעלות שוב.', true);
+        e.target.value = '';
+        return;
+      }
+    }
     const fd = new FormData();
-    fd.append('plan', file);
+    fd.append('plan', uploadFile, uploadName);
     await postForm(`/api/floors/${floorId}/plan`, fd);
     toast('התוכנית הועלתה');
     viewFloor(floorId);
