@@ -73,6 +73,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_photos_item ON item_photos(item_id);
 `);
 
+const floorColumns = db.prepare("PRAGMA table_info(floors)").all().map((c) => c.name);
+if (!floorColumns.includes('plan_pdf_path')) {
+  db.exec('ALTER TABLE floors ADD COLUMN plan_pdf_path TEXT');
+}
+
 // Seed default professions + contractor types on first run
 const professionCount = db.prepare('SELECT COUNT(*) AS c FROM professions').get().c;
 if (professionCount === 0) {

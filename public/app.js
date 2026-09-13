@@ -272,23 +272,23 @@ async function viewFloor(floorId) {
   document.getElementById('planInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    let uploadFile = file;
-    let uploadName = file.name;
+    const fd = new FormData();
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
     if (isPdf) {
-      toast('ממיר את קובץ ה-PDF לתמונה...');
+      toast('מעבד את קובץ ה-PDF...');
       try {
-        uploadFile = await window.pdfFirstPageToPngBlob(file);
-        uploadName = 'plan.png';
+        const thumb = await window.pdfFirstPageToPngBlob(file);
+        fd.append('plan', thumb, 'plan.png');
+        fd.append('planPdf', file, file.name || 'plan.pdf');
       } catch (err) {
         console.error(err);
-        toast('לא הצלחתי להמיר את קובץ ה-PDF. נסי לשמור אותו כתמונה (JPG/PNG) ולהעלות שוב.', true);
+        toast('לא הצלחתי לעבד את קובץ ה-PDF. נסי לשמור אותו כתמונה (JPG/PNG) ולהעלות שוב.', true);
         e.target.value = '';
         return;
       }
+    } else {
+      fd.append('plan', file);
     }
-    const fd = new FormData();
-    fd.append('plan', uploadFile, uploadName);
     await postForm(`/api/floors/${floorId}/plan`, fd);
     toast('התוכנית הועלתה');
     viewFloor(floorId);
@@ -313,6 +313,7 @@ function renderPlan(floor, rooms, counts, floorId) {
     wrap.innerHTML = `<div class="no-plan">אין עדיין תוכנית לקומה זו. לחצו על "העלה תוכנית קומה" למעלה.</div>`;
     return;
   }
+  const usePdf = !!floor.plan_pdf_path;
   wrap.innerHTML = `
     <div class="plan-toolbar">
       <button class="btn btn-sm" id="zoomOutBtn" title="הקטן">−</button>
@@ -323,7 +324,7 @@ function renderPlan(floor, rooms, counts, floorId) {
     </div>
     <div class="plan-viewport" id="planViewport">
       <div class="floor-plan-wrap" id="planImgWrap">
-        <img src="${esc(floor.plan_image_path)}" id="planImg" />
+        ${usePdf ? '<canvas id="planCanvas"></canvas>' : `<img src="${esc(floor.plan_image_path)}" id="planImg" />`}
         ${rooms.filter((r) => r.x !== null && r.y !== null).map((r) => `
           <div class="room-pin ${pinClass(counts[r.id])}" style="left:${r.x}%;top:${r.y}%;" data-room="${r.id}" title="${esc(r.name)}">${esc(r.name).slice(0, 1)}</div>
         `).join('')}
@@ -332,18 +333,46 @@ function renderPlan(floor, rooms, counts, floorId) {
   `;
   const planViewport = document.getElementById('planViewport');
   const planImgWrap = document.getElementById('planImgWrap');
-  const planImg = document.getElementById('planImg');
   const zoomLabel = document.getElementById('zoomLabel');
 
   let scale = 1;
   let naturalW = 0;
   let naturalH = 0;
+  let pdfPage = null;
+  let renderTask = null;
+
+  async function renderPdfCanvas() {
+    const canvas = document.getElementById('planCanvas');
+    if (!canvas || !pdfPage) return;
+    if (renderTask) {
+      try { renderTask.cancel(); } catch (e) { /* ignore */ }
+    }
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let renderScale = scale * dpr;
+    const probe = pdfPage.getViewport({ scale: renderScale });
+    const maxPixels = 4000;
+    if (Math.max(probe.width, probe.height) > maxPixels) {
+      renderScale *= maxPixels / Math.max(probe.width, probe.height);
+    }
+    const viewport = pdfPage.getViewport({ scale: renderScale });
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    canvas.style.width = Math.round(naturalW * scale) + 'px';
+    canvas.style.height = Math.round(naturalH * scale) + 'px';
+    renderTask = pdfPage.render({ canvasContext: canvas.getContext('2d'), viewport });
+    try {
+      await renderTask.promise;
+    } catch (err) {
+      if (err && err.name !== 'RenderingCancelledException') console.error(err);
+    }
+  }
 
   function applyScale() {
     if (!naturalW) return;
     planImgWrap.style.width = Math.round(naturalW * scale) + 'px';
     planImgWrap.style.height = Math.round(naturalH * scale) + 'px';
     zoomLabel.textContent = Math.round(scale * 100) + '%';
+    if (usePdf) renderPdfCanvas();
   }
   function fitToWidth() {
     if (!naturalW) return;
@@ -354,13 +383,28 @@ function renderPlan(floor, rooms, counts, floorId) {
     scale = Math.min(4, Math.max(0.15, scale * factor));
     applyScale();
   }
-  function onImgReady() {
-    naturalW = planImg.naturalWidth;
-    naturalH = planImg.naturalHeight;
-    fitToWidth();
+
+  if (usePdf) {
+    window.loadPdfFirstPage(floor.plan_pdf_path).then((page) => {
+      pdfPage = page;
+      const base = page.getViewport({ scale: 1 });
+      naturalW = base.width;
+      naturalH = base.height;
+      fitToWidth();
+    }).catch((err) => {
+      console.error(err);
+      toast('שגיאה בטעינת ה-PDF של התוכנית', true);
+    });
+  } else {
+    const planImg = document.getElementById('planImg');
+    function onImgReady() {
+      naturalW = planImg.naturalWidth;
+      naturalH = planImg.naturalHeight;
+      fitToWidth();
+    }
+    if (planImg.complete && planImg.naturalWidth) onImgReady();
+    else planImg.addEventListener('load', onImgReady);
   }
-  if (planImg.complete && planImg.naturalWidth) onImgReady();
-  else planImg.addEventListener('load', onImgReady);
 
   document.getElementById('zoomInBtn').onclick = () => zoomBy(1.35);
   document.getElementById('zoomOutBtn').onclick = () => zoomBy(1 / 1.35);

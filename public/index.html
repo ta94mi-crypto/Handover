@@ -30,7 +30,7 @@
     import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
 
-    window.pdfFirstPageToPngBlob = async function pdfFirstPageToPngBlob(file, maxDim = 2200) {
+    window.pdfFirstPageToPngBlob = async function pdfFirstPageToPngBlob(file, maxDim = 1400) {
       const buffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
       const page = await pdf.getPage(1);
@@ -44,6 +44,11 @@
       return await new Promise((resolve, reject) => {
         canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('כשל בהמרת ה-PDF לתמונה'))), 'image/png');
       });
+    };
+
+    window.loadPdfFirstPage = async function loadPdfFirstPage(url) {
+      const pdf = await pdfjsLib.getDocument(url).promise;
+      return pdf.getPage(1);
     };
   </script>
   <script src="/app.js"></script>

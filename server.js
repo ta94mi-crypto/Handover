@@ -39,8 +39,29 @@ function makeUploader(subdir) {
     },
   });
 }
-const uploadPlan = makeUploader(PLANS_DIR);
 const uploadItemPhotos = makeUploader(ITEMS_DIR);
+
+const uploadPlanFields = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, PLANS_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').slice(0, 10);
+      cb(null, `${nanoid()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.fieldname === 'planPdf') {
+      if (file.mimetype === 'application/pdf') return cb(null, true);
+      return cb(new Error('קובץ ה-PDF אינו תקין'));
+    }
+    if (/^image\//.test(file.mimetype)) return cb(null, true);
+    cb(new Error('רק קבצי תמונה נתמכים'));
+  },
+}).fields([
+  { name: 'plan', maxCount: 1 },
+  { name: 'planPdf', maxCount: 1 },
+]);
 
 function relUpload(absPath) {
   return '/uploads/' + path.relative(UPLOADS_DIR, absPath).split(path.sep).join('/');
@@ -118,12 +139,19 @@ app.patch('/api/floors/:id', (req, res) => {
   res.json(db.prepare('SELECT * FROM floors WHERE id = ?').get(req.params.id));
 });
 
-app.post('/api/floors/:id/plan', uploadPlan.single('plan'), (req, res) => {
+app.post('/api/floors/:id/plan', uploadPlanFields, (req, res) => {
   const floor = db.prepare('SELECT * FROM floors WHERE id = ?').get(req.params.id);
   if (!floor) return notFound(res);
-  if (!req.file) return res.status(400).json({ error: 'לא הועלה קובץ' });
-  const relPath = relUpload(req.file.path);
-  db.prepare('UPDATE floors SET plan_image_path = ? WHERE id = ?').run(relPath, req.params.id);
+  const planFile = req.files?.plan?.[0];
+  const pdfFile = req.files?.planPdf?.[0];
+  if (!planFile) return res.status(400).json({ error: 'לא הועלה קובץ' });
+  const relPath = relUpload(planFile.path);
+  const pdfRelPath = pdfFile ? relUpload(pdfFile.path) : null;
+  db.prepare('UPDATE floors SET plan_image_path = ?, plan_pdf_path = ? WHERE id = ?').run(
+    relPath,
+    pdfRelPath,
+    req.params.id
+  );
   res.json(db.prepare('SELECT * FROM floors WHERE id = ?').get(req.params.id));
 });
 
